@@ -1,12 +1,7 @@
-﻿using Explorer.Blog.API.Public;
+﻿using Explorer.Blog.API.Dtos;
+using Explorer.Blog.API.Public;
 using Explorer.Blog.Core.Domain.RepositoryInterfaces;
 using Explorer.Blog.Core.Domain;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Explorer.Blog.API.Dtos;
 
 namespace Explorer.Blog.Core.UseCases
 {
@@ -21,15 +16,13 @@ namespace Explorer.Blog.Core.UseCases
 
         public void CreateOrder(Guid userId, List<ShoppingCartItemDTO> items, double totalPrice)
         {
-            // --- Validacije ---
             if (userId == Guid.Empty)
                 throw new ArgumentException("UserId cannot be empty", nameof(userId));
 
             if (items == null || items.Count == 0)
                 throw new ArgumentException("Items list cannot be null or empty", nameof(items));
 
-            // --- Kreiranje shopping cart-a ---
-            ShoppingCart shoppingCart = new ShoppingCart
+            var shoppingCart = new ShoppingCart
             {
                 TouristId = userId.ToString(),
                 ShoppingCartItems = items
@@ -38,22 +31,17 @@ namespace Explorer.Blog.Core.UseCases
                 TotalPrice = totalPrice
             };
 
-            // --- Kreiranje tokena (ako je potrebno) ---
-            List<TourPurchaseToken> purchaseTokens = items
+            var purchaseTokens = items
                 .Select(dto => new TourPurchaseToken(userId.ToString(), dto.TourId))
                 .ToList();
 
-            // --- Sačuvaj sve u bazi u jednom pozivu ---
             _ordersRepository.CreateShoppingCart(shoppingCart);
 
-            // --- Poveži DTO sa kreiranim ShoppingCart.Id ---
             foreach (var dto in items)
             {
                 dto.ShoppingCartId = shoppingCart.Id;
             }
 
-            // --- Opcionalno: batch insert tokena ---
-            // Ako repozitorijum podržava batch insert, možeš ovo uraditi:
             foreach (var token in purchaseTokens)
             {
                 _ordersRepository.CreateTourPurchaseToken(token);
@@ -72,5 +60,26 @@ namespace Explorer.Blog.Core.UseCases
                 .ToList();
         }
 
+        // ➕ Implementacije za korpu
+        public async Task AddToCartAsync(Guid userId, ShoppingCartItemDTO item)
+        {
+            await _ordersRepository.AddToCartAsync(userId, new ShoppingCartItem(item.TourId, item.Name, item.Price));
+        }
+
+        public async Task<IEnumerable<ShoppingCartItemDTO>> GetCartAsync(Guid userId)
+        {
+            var items = await _ordersRepository.GetCartByUserIdAsync(userId);
+            return items.Select(i => new ShoppingCartItemDTO(i.TourId, i.Name, i.Price));
+        }
+
+        public async Task RemoveFromCartAsync(Guid userId, string tourId)
+        {
+            await _ordersRepository.RemoveFromCartAsync(userId, tourId);
+        }
+
+        public async Task ClearCartAsync(Guid userId)
+        {
+            await _ordersRepository.ClearCartAsync(userId);
+        }
     }
 }
